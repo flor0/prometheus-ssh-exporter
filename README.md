@@ -60,5 +60,6 @@ If everything is set up correctly you should get the metrics.
 
 I have published a grafana dashboard that can be found at https://snapshots.raintank.io/dashboard/snapshot/fnZ63M865o3J0N0ne9lSKfezGe7ERYVN
 or imported with the grafana-dashboard.json file.
+![prometheus-grafana](https://user-images.githubusercontent.com/48520760/232910344-89fb6557-0160-4f83-a794-ebcca4df28df.png)
 
 
