@@ -38,14 +38,17 @@ def get_utmp_data() -> list[Session]:
     Returns a list of User Objects
     The function uses the utmp library. The utmp file contains information about ALL currently logged in users,
     including local users (not SSH sessions). We filter out the local users by checking if the remote IP address
-    is empty.
+    is empty and set the hostname for the local sessions to "localhost".
     """
     users : list[Session] = []
     with open('/var/run/utmp', 'rb') as fd:
         buffer = fd.read()
         for record in utmp.read(buffer):
-            if record.type == utmp.UTmpRecordType.user_process and record.host != '':
-                users.append(Session(record.user, record.line, record.host, record.sec))
+            if record.type == utmp.UTmpRecordType.user_process:
+                if record.host != '':
+                    users.append(Session(record.user, record.line, record.host, record.sec))
+                else:
+                    users.append(Session(record.user, record.line, 'localhost', record.sec))
     return users
 
 
