@@ -31,6 +31,7 @@ services:
       - /run/utmp:/run/utmp
     restart: unless-stopped
 ```
+Note: It is vital that /run/utmp is mapped in the docker container, otherwise the program can't get your session info!
 
 ### As a python script
 Alternatively, you can simply run the prometheus-ssh-exporter.py file with python3.
