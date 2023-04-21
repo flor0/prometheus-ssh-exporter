@@ -160,7 +160,7 @@ if __name__ == '__main__':
             handle_sessions_changed()
             time.sleep(FETCH_INTERVAL)
 
-    except KeyboardInterrupt:
-        print("Manual interrupt...")
+    except:
+        print("Terminating...")
         observer.stop()
     observer.join()
