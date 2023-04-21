@@ -146,6 +146,7 @@ if __name__ == '__main__':
     This is used to immediately look for changes in the SSH sessions when a new session is opened or closed
     to prevent missing any sessions that lasted less than the FETCH_INTERVAL.
     """
+    print("Watching file {} for changes...".format(WATCHFILE))
     event_handler = FileOpenedHandler()
     observer = Observer()
     observer.schedule(event_handler, path=WATCHFILE, recursive=False)
