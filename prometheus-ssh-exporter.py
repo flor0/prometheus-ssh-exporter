@@ -2,11 +2,21 @@ import prometheus_client
 import time
 import argparse
 import utmp
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler, FileModifiedEvent
+
 
 # These defaults can be overwritten by command line arguments
 SERVER_HOST = '0.0.0.0'
 SERVER_PORT = 9999
 FETCH_INTERVAL = 15
+WATCHFILE = '/var/run/utmp'
+
+
+class FileOpenedHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if not event.is_directory and isinstance(event, FileModifiedEvent) and event.src_path == WATCHFILE:
+            handle_sessions_changed()
 
 
 class Session:
@@ -53,9 +63,36 @@ def get_utmp_data() -> list[Session]:
 
 
 
-def parse_arguments() -> None:
+def handle_sessions_changed() -> None:
+    """ 
+    This function fetches the current list of SSH sessions and compares it to the previous list of SSH sessions.
+    If the number of sessions has changed, it increments or decrements the gauge_num_sessions metric
+    and updates the session_data and num_sessions variables.
+    """
+    global session_data, num_sessions, gauge_num_sessions, old_session_data, old_num_sessions
 
-    global FETCH_INTERVAL, SERVER_PORT, SERVER_HOST
+    old_session_data = session_data
+    old_num_sessions = len(old_session_data)
+
+    session_data = get_utmp_data()
+    num_sessions = len(session_data)
+
+    for maybe_new_session in session_data:
+        # Looking for newly found SSH sessions
+        if not maybe_new_session in old_session_data:
+            print("Session connected: %s" % maybe_new_session.from_)
+            gauge_num_sessions.labels(remote_ip=maybe_new_session.from_).inc()
+
+    for maybe_old_session in old_session_data:
+        # Looking for SSH sessions that no longer exist
+        if not maybe_old_session in session_data:
+            print("Session disconnected: %s" % maybe_old_session.from_)
+            gauge_num_sessions.labels(remote_ip=maybe_old_session.from_).dec()
+
+
+
+def parse_arguments() -> None:
+    global FETCH_INTERVAL, SERVER_PORT, SERVER_HOST, WATCHFILE
 
     parser = argparse.ArgumentParser(
         prog='python prometheus-ssh-exporter.py',
@@ -66,11 +103,15 @@ def parse_arguments() -> None:
                         help='Port for the server to listen to')
     parser.add_argument('-i', '--interval', type=int, default=15,
                         help='Interval in seconds to fetch SSH sessions data')
+    parser.add_argument('-f', '--file', type=str, default='/var/run/utmp',
+                        help='File that changes every time a new SSH session is opened or closed')
 
     args = parser.parse_args()
     FETCH_INTERVAL = args.interval
     SERVER_PORT = args.port
     SERVER_HOST = args.host
+    WATCHFILE = args.file
+
 
 
 if __name__ == '__main__':
@@ -81,6 +122,7 @@ if __name__ == '__main__':
     or sum them up to get the total number of sessions.
     """
 
+
     parse_arguments()
 
     # Start up the server to expose the metrics.
@@ -89,35 +131,36 @@ if __name__ == '__main__':
     gauge_num_sessions = prometheus_client.Gauge(
         'ssh_num_sessions', 'Number of SSH sessions', ['remote_ip'])
     
+    # session_data contains the current list of sessions
     session_data = get_utmp_data()
     num_sessions = len(session_data)
     
     # Initial metrics
-    print("Active sessions at startup:")
     for session in session_data:
         gauge_num_sessions.labels(remote_ip=session.from_).inc()
         print("Initial connection: {}".format(session.from_))
 
+
+    """
+    Start the watchdog to monitor the WATCHDOG file for changes. 
+    This is used to immediately look for changes in the SSH sessions when a new session is opened or closed
+    to prevent missing any sessions that lasted less than the FETCH_INTERVAL.
+    """
+    event_handler = FileOpenedHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path=WATCHFILE, recursive=False)
+    observer.start()
+
     # Generate some requests.
     print("Looking for SSH connection changes at interval {}".format(FETCH_INTERVAL))
-    while True:
+    try:
 
-        old_session_data = session_data
-        old_num_sessions = len(old_session_data)
+        while True:
+            # Keep looking for changes in the SSH sessions in case the watchdog missed something
+            handle_sessions_changed()
+            time.sleep(FETCH_INTERVAL)
 
-        session_data = get_utmp_data()
-        num_sessions = len(session_data)
-
-        for maybe_new_session in session_data:
-            # Looking for newly found SSH sessions
-            if not maybe_new_session in old_session_data:
-                print("Session connected: %s" % maybe_new_session.from_)
-                gauge_num_sessions.labels(remote_ip=maybe_new_session.from_).inc()
-
-        for maybe_old_session in old_session_data:
-            # Looking for SSH sessions that no longer exist
-            if not maybe_old_session in session_data:
-                print("Session disconnected: %s" % maybe_old_session.from_)
-                gauge_num_sessions.labels(remote_ip=maybe_old_session.from_).dec()
-
-        time.sleep(FETCH_INTERVAL)
+    except KeyboardInterrupt:
+        print("Manual interrupt...")
+        observer.stop()
+    observer.join()
