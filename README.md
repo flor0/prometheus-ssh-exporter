@@ -36,7 +36,7 @@ Note: It is vital that /run/utmp is mapped in the docker container, otherwise th
 ### As a python script
 Alternatively, you can simply run the prometheus-ssh-exporter.py file with python3.
 
-The command line arguments are explained if you use `python3 ./prometheus-ssh-exporter.py -h`
+The command line arguments are explained if you use `python3 ./prometheus-ssh-exporter.py --help`
 
 Make sure you set the right external port using the -p or --port argument.
 
